@@ -12,15 +12,9 @@
 void GetNoise(float* r, int size, int seed)
 {
 	VSLStreamStatePtr stream;
-#pragma offload target(mic) in(seed) nocopy(stream)
 	vslNewStream(&stream, VSL_BRNG_MT2203, seed);
-
-#pragma offload target(mic) \
-	in(n) out(r) nocopy(stream)
-	{
-		vsRngGaussian(VSL_RNG_METHOD_GAUSSIAN_BOXMULLER2,
-			stream, size, r, 0.0, 1.0);
-	}
+	vsRngGaussian(VSL_RNG_METHOD_GAUSSIAN_BOXMULLER2,
+		stream, size, r, 0.0, 1.0);
 }
 
 void CalculatePropability(float gamma, float omega, float T, float h, float A, float i0, double* mst, double* sd)
@@ -106,7 +100,7 @@ void CalculatePropability(float gamma, float omega, float T, float h, float A, f
 void CountMST()
 {
 	double i0 = 0.89;
-	double h = 0.1;
+	double h = 0.01;
 	double A = 0.05;
 	double gamma = 0.01;
 	double* mst = new double;
@@ -133,10 +127,10 @@ void CountMST()
 			std::ofstream out2(f2);
 			double perc = 0;
 			std::string perc_str;
-			for (double i = 0.0; i <= 1.2; i += 0.0005)
+			for (double i = 0.0; i <= 1.2; i += 0.005)
 			{
 				auto time1 = std::chrono::steady_clock::now();
-				CalculatePropability(k, i, 100, h, A, i0, mst, sd);
+				CalculatePropability(k, i, 1000, h, A, i0, mst, sd);
 				out << "t = " << i << "\tx = " << *mst << std::endl;
 				out2 << "t = " << i << "\tx = " << *sd << std::endl;
 
