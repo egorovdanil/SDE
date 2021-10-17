@@ -11,7 +11,7 @@
 
 #include <random>
 
-std::vector<float> gauss_distribution(size_t size, std::mt19937_64& gen)
+std::vector<float> gauss_distribution(size_t size, std::mt19937& gen)
 {
 	std::vector<float> tmp(size);
 	std::normal_distribution<double> distrib(0.0, 1.0);
@@ -50,7 +50,7 @@ void CalculatePropability(float gamma, float omega, float T, float h, float A, f
 	params.gamma = gamma;
 	params.Cinfigure();
 	std::random_device rd;
-	std::vector<std::mt19937_64> gen(numtasks, std::mt19937_64(rd()));
+	std::vector<std::mt19937> gen(numtasks, std::mt19937(rd()));
 
 	std::vector<float> P(params.size);
 	std::vector<std::vector<float>> P_part(numtasks);
