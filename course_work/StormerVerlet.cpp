@@ -1,7 +1,7 @@
 #include "common.h"
 #include "StormerVerlet.h"
 
-void GetStormerVerlet(float* gas, std::vector<float>& P, StormerVerletParams& params, int id)
+void GetStormerVerlet(std::vector<float>& gas, std::vector<float>& P, StormerVerletParams& params, int id)
 {
 	float fi_current = asin(params.i0);
 	float sin_fi = 0;
@@ -25,6 +25,7 @@ void GetStormerVerlet(float* gas, std::vector<float>& P, StormerVerletParams& pa
 
 #ifdef DUMP_POINTS
 		out << "t = " << t << "\tx = " << fi_current << std::endl;
+		t += params.h;
 #endif
 
 		noise = params.noise_intensity * gas[i];
@@ -35,10 +36,6 @@ void GetStormerVerlet(float* gas, std::vector<float>& P, StormerVerletParams& pa
 
 		fi_current = fi_next;
 		v_current = v_next;
-
-#ifdef DUMP_POINTS
-		t += params.h;
-#endif
 	}
 
 #ifdef DUMP_POINTS

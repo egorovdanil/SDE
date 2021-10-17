@@ -9,6 +9,18 @@
 #include "common.h"
 #include "StormerVerlet.h"
 
+#include <random>
+
+std::vector<float> gauss_distribution(size_t size, std::mt19937_64& gen)
+{
+	std::vector<float> tmp(size);
+	std::normal_distribution<double> distrib(0.0, 1.0);
+	for (auto& i : tmp)
+		i = distrib(gen);
+	return tmp;
+}
+
+
 void GetNoise(float* r, int size, int seed)
 {
 	VSLStreamStatePtr stream;
@@ -37,6 +49,8 @@ void CalculatePropability(float gamma, float omega, float T, float h, float A, f
 	params.omega = omega;
 	params.gamma = gamma;
 	params.Cinfigure();
+	std::random_device rd;
+	std::vector<std::mt19937_64> gen(numtasks, std::mt19937_64(rd()));
 
 	std::vector<float> P(params.size);
 	std::vector<std::vector<float>> P_part(numtasks);
@@ -57,12 +71,10 @@ void CalculatePropability(float gamma, float omega, float T, float h, float A, f
 
 		for (size_t i = 0; i < part_count; i++)
 		{
-			float* gas = new float[params.size];
-			GetNoise(gas, params.size, taskid * (i + 1)); // * i * omega
+			std::vector<float> gas = gauss_distribution(params.size, gen[taskid]);
 			//GetStormerVerlet2nd(gas, X, params.i0, params.t_max, params.h, params.omega);
 			GetStormerVerlet(gas, P_part[taskid], params, taskid);
 			//GetHeun2nd(gas, X, params.i0, params.t_max, params.h, params.omega, taskid + 20);
-			delete[] gas;
 		}
 
 	}
@@ -106,7 +118,7 @@ void CalculatePropability(float gamma, float omega, float T, float h, float A, f
 void CountMST()
 {
 	double i0 = 0.89;
-	double h = 0.1;
+	double h = 0.01;
 	double A = 0.05;
 	double gamma = 0.01;
 	double* mst = new double;
@@ -133,10 +145,10 @@ void CountMST()
 			std::ofstream out2(f2);
 			double perc = 0;
 			std::string perc_str;
-			for (double i = 0.0; i <= 1.2; i += 0.0005)
+			for (double i = 0.0; i <= 1.2; i += 0.005)
 			{
 				auto time1 = std::chrono::steady_clock::now();
-				CalculatePropability(k, i, 100, h, A, i0, mst, sd);
+				CalculatePropability(k, i, 1000, h, A, i0, mst, sd);
 				out << "t = " << i << "\tx = " << *mst << std::endl;
 				out2 << "t = " << i << "\tx = " << *sd << std::endl;
 

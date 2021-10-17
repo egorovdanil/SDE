@@ -34,4 +34,4 @@ struct StormerVerletParams
 	void CalculateItByTime();
 };
 
-void GetStormerVerlet(float* gas, std::vector<float>& P, StormerVerletParams& params, int id);
+void GetStormerVerlet(std::vector<float>& gas, std::vector<float>& P, StormerVerletParams& params, int id);
