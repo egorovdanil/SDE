@@ -13,11 +13,12 @@ void GetNoise(float* r, int size, int seed)
 {
 	VSLStreamStatePtr stream;
 	vslNewStream(&stream, VSL_BRNG_MT2203, seed);
+
 	vsRngGaussian(VSL_RNG_METHOD_GAUSSIAN_BOXMULLER2,
 		stream, size, r, 0.0, 1.0);
 }
 
-void CalculatePropability(float gamma, float omega, float T, float h, float A, float i0, double* mst, double* sd)
+void CalculatePropability(float gamma, float omega, float T, float h, float A, float i0, double* mst, double* sd, double* lifetime)
 {
 	const unsigned short numtasks = 12;
 
@@ -34,6 +35,7 @@ void CalculatePropability(float gamma, float omega, float T, float h, float A, f
 
 	std::vector<float> P(params.size);
 	std::vector<std::vector<float>> P_part(numtasks);
+	std::vector<double> lifetime_part(numtasks);
 	for (size_t i = 0; i < P_part.size(); i++)
 	{
 		P_part[i].resize(params.size);
@@ -54,12 +56,22 @@ void CalculatePropability(float gamma, float omega, float T, float h, float A, f
 			float* gas = new float[params.size];
 			GetNoise(gas, params.size, taskid * (i + 1)); // * i * omega
 			//GetStormerVerlet2nd(gas, X, params.i0, params.t_max, params.h, params.omega);
-			GetStormerVerlet(gas, P_part[taskid], params, taskid);
+			lifetime_part[taskid] += GetStormerVerlet(gas, P_part[taskid], params, taskid);
 			//GetHeun2nd(gas, X, params.i0, params.t_max, params.h, params.omega, taskid + 20);
 			delete[] gas;
 		}
 
 	}
+
+	for (size_t i = 0; i < numtasks; i++)
+	{
+		*lifetime += lifetime_part[i];
+	}
+	*lifetime /= count;
+
+#ifdef LIFE_TIME_BREAK
+	return;
+#endif
 
 	for (size_t i = 0; i < P.size(); i++)
 	{
@@ -81,58 +93,61 @@ void CalculatePropability(float gamma, float omega, float T, float h, float A, f
 	double t = 1 * 0.5;
 	double integral_mst = 0;
 	double integral_second = 0;
-	for (size_t i = 1; i < P.size(); i++)
+	for (size_t i = 0; i < P.size(); i++)
 	{
 		integral_mst += P[i];
 		integral_second += t * P[i];
 		t += 1;
 	}
 	integral_second *= 2.0;
-	integral_second /= (1 / params.h) * (1 / params.h);
+	integral_second *= (params.h * params.h);
 
-	t /= (1 / params.h);
-
-	double sqr_integral_mst = (integral_mst * integral_mst) / ((1 / params.h) * (1 / params.h));
+	double sqr_integral_mst = (integral_mst * integral_mst) * (params.h * params.h);
 	*sd = sqrt(integral_second - sqr_integral_mst);
 	*mst = integral_mst / (1 / params.h);
 }
 
 void CountMST()
 {
-	double i0 = 0.89;
+	double i0 = 0.9;
 	double h = 0.01;
-	double A = 0.05;
+	double A = 0.2;
 	double gamma = 0.01;
 	double* mst = new double;
 	double* sd = new double;
+	double* lifetime = new double;
 
 	std::vector<std::pair<double, double>> sds;
 
-	for (double j = 0.02; j <= 0.060001; j += 0.01)
+	for (double j = 0.2; j <= 0.3; j += 0.1)
 	{
-		i0 = 0.95 - j;
+		A = j;
+		//i0 = 0.95 - j;
 		std::cout << "A\t" << j << std::endl;
 		std::cout << "i0\t" << i0 << std::endl;
 		std::cout << "-------------------------------------------------" << std::endl;
 
-		A = j;
 		auto time_A1 = std::chrono::steady_clock::now();
 		for (double k = 0.01; k <= 0.01; k *= 10)
 		{
+			k = gamma; //
 			std::cout << "Gamma\t" << k << "\t\t";
 			auto time_gamma1 = std::chrono::steady_clock::now();
-			std::string f("C:\\Users\\A\\Desktop\\graphs9\\mst_A_" + std::to_string(A) + "_G_" + std::to_string(k) + ".txt");
-			std::string f2("C:\\Users\\A\\Desktop\\graphs9\\sd_A_" + std::to_string(A) + "_G_" + std::to_string(k) + ".txt");
+			std::string f("C:\\Users\\A\\Desktop\\graphs9\\3tmp12_mst_A_" + std::to_string(A) + "_G_" + std::to_string(k) + ".txt");
+			std::string f2("C:\\Users\\A\\Desktop\\graphs9\\3tmp12_sd_A_" + std::to_string(A) + "_G_" + std::to_string(k) + ".txt");
+			std::string f3("C:\\Users\\A\\Desktop\\graphs9\\_life_time_A_" + std::to_string(A) + "_G_" + std::to_string(k) + ".txt");
 			std::ofstream out(f);
 			std::ofstream out2(f2);
+			std::ofstream out3(f3);
 			double perc = 0;
 			std::string perc_str;
-			for (double i = 0.0; i <= 1.2; i += 0.005)
+			for (double i = 0.0; i <= 1.2; i += 0.002)
 			{
 				auto time1 = std::chrono::steady_clock::now();
-				CalculatePropability(k, i, 1000, h, A, i0, mst, sd);
+				CalculatePropability(k, i, 1000, h, A, i0, mst, sd, lifetime);
 				out << "t = " << i << "\tx = " << *mst << std::endl;
 				out2 << "t = " << i << "\tx = " << *sd << std::endl;
+				out3 << i << "\t" << *lifetime << std::endl;
 
 				sds.push_back(std::make_pair(*sd, i));
 
@@ -147,8 +162,11 @@ void CountMST()
 			}
 			out.close();
 			out2.close();
+			out3.close();
 			auto time_gamma2 = std::chrono::steady_clock::now();
 			std::cout << "\tTime: " << (double)std::chrono::duration_cast<std::chrono::milliseconds>(time_gamma2 - time_gamma1).count() << " msec." << std::endl;
+
+			return;
 		}
 
 		auto time_A2 = std::chrono::steady_clock::now();

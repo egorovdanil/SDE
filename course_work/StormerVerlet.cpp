@@ -1,8 +1,10 @@
 #include "common.h"
 #include "StormerVerlet.h"
 
-void GetStormerVerlet(float* gas, std::vector<float>& P, StormerVerletParams& params, int id)
+double GetStormerVerlet(float* gas, std::vector<float>& P, StormerVerletParams& params, int id)
 {
+	double lifetime = 0.0;
+	bool end_lifetime = false;
 	float fi_current = asin(params.i0);
 	float sin_fi = 0;
 	float fi_next = 0;
@@ -21,6 +23,14 @@ void GetStormerVerlet(float* gas, std::vector<float>& P, StormerVerletParams& pa
 		if (fi_current <= params.h_barrier && fi_current >= params.l_barrier)
 		{
 			P[i] += 1;
+			if (!end_lifetime) lifetime += params.h;
+		}
+		else
+		{
+			end_lifetime = true;
+#ifdef LIFE_TIME_BREAK
+			break;
+#endif
 		}
 
 #ifdef DUMP_POINTS
@@ -44,6 +54,8 @@ void GetStormerVerlet(float* gas, std::vector<float>& P, StormerVerletParams& pa
 #ifdef DUMP_POINTS
 	out.close();
 #endif
+
+	return lifetime;
 }
 
 StormerVerletParams::StormerVerletParams()
@@ -62,6 +74,7 @@ StormerVerletParams::StormerVerletParams()
 void StormerVerletParams::Cinfigure()
 {
 	h_barrier = PI + asin(A - i0);
+	h_barrier = PI; // temporary
 	l_barrier = -h_barrier;
 	CalculateCoefs();
 	CalculateItByTime();
@@ -86,7 +99,7 @@ void StormerVerletParams::CalculateCoefs()
 void StormerVerletParams::CalculateItByTime()
 {
 	float t = 0;
-	short first_step = 1;
+	short first_step = 0;
 	for (size_t i = 0; i < size; ++i)
 	{
 		it[i] = i0 + A * sin(omega * t);

@@ -2,6 +2,7 @@
 #include <iostream>
 #include <vector>
 
+#define LIFE_TIME_BREAK 1
 #define PI 3.14159265
 
 void GetNoise(float* r, int size, int seed);
