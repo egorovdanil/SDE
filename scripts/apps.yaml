@@ -1,0 +1,6 @@
+python: C:/Users/A/AppData/Local/Programs/Python/Python39/python.exe
+mpi: mpiexec
+cpu_fp32: C:/Users/A/source/repos/rscj/rscj_cpu_fp32.exe
+cpu_fp64: C:/Users/A/source/repos/rscj/rscj_cpu_fp64.exe
+gpu_fp32: C:/Users/A/source/repos/rscj/rscj_gpu_fp32.exe
+gpu_fp64: C:/Users/A/source/repos/rscj/rscj_gpu_fp64.exe

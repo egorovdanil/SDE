@@ -1,0 +1,26 @@
+---
+  arc: gpu                #[cpu/gpu]
+  fp: 64                  #[32/64]
+  threads: 32             #[int]
+  platform_id: 0          #[int]
+  device_id: 0            #[int]
+  points: 1               #[int]
+...
+
+---
+  arc: gpu                #[cpu/gpu]
+  fp: 32                  #[32/64]
+  threads: 32             #[int]
+  platform_id: 1          #[int]
+  device_id: 0            #[int]
+  points: 2               #[int]
+...
+
+---
+  arc: cpu                #[cpu/gpu]
+  fp: 64                  #[32/64]
+  threads: 32             #[int]
+  platform_id: 2          #[int]
+  device_id: 0            #[int]
+  points: 1              #[int]
+...
