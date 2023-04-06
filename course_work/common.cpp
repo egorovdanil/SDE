@@ -1,229 +1,171 @@
-#include <fstream>
-#include <string>
 #include <chrono>
 #include <omp.h>
-#include <cmath>
-#include <algorithm>
-#include "mkl.h"
 
 #include "common.h"
 #include "StormerVerlet.h"
 
-void GetNoise(float* r, int size, int seed)
+std::pair<double, double> CalculatePropability(Parameters params)
 {
-	VSLStreamStatePtr stream;
-	vslNewStream(&stream, VSL_BRNG_MT2203, seed);
+	const unsigned short numtasks = 16;
 
-	vsRngGaussian(VSL_RNG_METHOD_GAUSSIAN_BOXMULLER2,
-		stream, size, r, 0.0, 1.0);
-}
+	size_t switch_num = 16000;
 
-void CalculatePropability(float gamma, float omega, float T, float h, float A, float i0, double* mst, double* sd, double* lifetime)
-{
-	const unsigned short numtasks = 12;
-
-	size_t count = 2400;
-
-	StormerVerletParams params;
-	params.A = A;
-	params.t_max = T;
-	params.h = h;
-	params.i0 = i0;
-	params.omega = omega;
-	params.gamma = gamma;
-	params.Cinfigure();
-
-	std::vector<float> P(params.size);
-	std::vector<std::vector<float>> P_part(numtasks);
-	std::vector<double> lifetime_part(numtasks);
-	for (size_t i = 0; i < P_part.size(); i++)
-	{
-		P_part[i].resize(params.size);
+	if (switch_num % numtasks) {
+		switch_num = switch_num / numtasks;
+		//std::cout << "switch num changed to " << switch_num << std::endl;
 	}
+
+	std::vector<double> timings(switch_num);
+	size_t part_count = switch_num / numtasks;
 
 	omp_set_num_threads(numtasks);
 #pragma omp parallel shared(numtasks, params)
 	{
 		short taskid = omp_get_thread_num();
-		size_t part_count = count / numtasks;
-		if (taskid == 0)
-			part_count = part_count + count % numtasks;
+		size_t shift = taskid * part_count;
 
-		P_part[taskid].resize(params.size, 0.0);
-
-		for (size_t i = 0; i < part_count; i++)
-		{
-			float* gas = new float[params.size];
-			GetNoise(gas, params.size, taskid * (i + 1)); // * i * omega
-			//GetStormerVerlet2nd(gas, X, params.i0, params.t_max, params.h, params.omega);
-			lifetime_part[taskid] += GetStormerVerlet(gas, P_part[taskid], params, taskid);
-			//GetHeun2nd(gas, X, params.i0, params.t_max, params.h, params.omega, taskid + 20);
-			delete[] gas;
+		for (size_t i = 0; i < part_count; i++) {
+			timings[shift + i] = StormerVerlet(params);
 		}
-
 	}
 
-	for (size_t i = 0; i < numtasks; i++)
-	{
-		*lifetime += lifetime_part[i];
+	double mst = 0;
+	double sd = 0;
+	for (auto time: timings) {
+		mst += time;
 	}
-	*lifetime /= count;
+	mst = mst / switch_num;
 
-#ifdef LIFE_TIME_BREAK
-	return;
-#endif
-
-	for (size_t i = 0; i < P.size(); i++)
-	{
-		P[i] = 0;
+	for (auto time: timings) {
+		sd += (time - mst) * (time - mst);
 	}
-
-#pragma omp for
-	{
-		for (int i = 0; i < P.size(); ++i)
-			for (int p = 0; p < numtasks; ++p)
-				P[i] += P_part[p][i];
-	}
-
-	for (size_t i = 0; i < P.size(); i++)
-	{
-		P[i] = P[i] / count;
-	}
-
-	double t = 1 * 0.5;
-	double integral_mst = 0;
-	double integral_second = 0;
-	for (size_t i = 0; i < P.size(); i++)
-	{
-		integral_mst += P[i];
-		integral_second += t * P[i];
-		t += 1;
-	}
-	integral_second *= 2.0;
-	integral_second *= (params.h * params.h);
-
-	double sqr_integral_mst = (integral_mst * integral_mst) * (params.h * params.h);
-	*sd = sqrt(integral_second - sqr_integral_mst);
-	*mst = integral_mst / (1 / params.h);
+	sd = sqrt(sd / (switch_num - 1));
+	return std::pair<double, double>(mst, sd);
 }
 
-void CountMST()
+void MakeCurveByOmega()
 {
-	double i0 = 0.9;
-	double h = 0.01;
-	double A = 0.2;
-	double gamma = 0.01;
-	double* mst = new double;
-	double* sd = new double;
-	double* lifetime = new double;
+	std::string id = std::to_string(std::time(0));
+	std::string file_name_params = "C:\\Users\\A\\source\\SDE\\graphs\\parameters_" + id + ".txt";
+	std::string file_name_mst = "C:\\Users\\A\\source\\SDE\\graphs\\mst_" + id + ".txt";
+	std::string file_name_sd = "C:\\Users\\A\\source\\SDE\\graphs\\sd_" + id + ".txt";
+	std::string file_name_mst2sd = "C:\\Users\\A\\source\\SDE\\graphs\\mst2sd_" + id + ".txt";
 
-	std::vector<std::pair<double, double>> sds;
+	std::string file_name_poisson_stat = "C:\\Users\\A\\source\\SDE\\graphs\\ps_" + id + ".txt";
+	//std::string file_name_poisson_stat_mean = "C:\\Users\\A\\source\\SDE\\graphs\\ps_mean_" + id + ".txt";
 
-	for (double j = 0.2; j <= 0.3; j += 0.1)
+	std::ofstream out_params(file_name_params);
+	std::ofstream out_mst(file_name_mst);
+	std::ofstream out_sd(file_name_sd);
+	std::ofstream out_mst2sd(file_name_mst2sd);
+
+	std::ofstream out_ps(file_name_poisson_stat);
+	//std::ofstream out_ps_mean(file_name_poisson_stat_mean);
+
+	//params.amplitude = 0.01;
+	//params.gamma = 0.001;
+	//params.alpha = 0.1;
+	//params.bias_current = 1;
+	//params.t_max = 2000;
+	//params.h = 0.01;
+	//params.signal_type = Signal::Type::RectImpulse;
+
+	//params.real.T = 10;
+	//params.real.Ic = 0.4;
+	//params.real.Ib = 0.2;
+	//params.real.Cp = 7;
+	//params.real.Rn = 108;
+	//params.real.A = 1.5;
+	//params.real.Fq = 2520000000;
+	//params.real.seconds = 0.000001;
+	//params.ConfigureFromReal();
+
+	Parameters params;
+	params.amplitude = 0.05;
+	params.gamma = 0.001;
+	params.alpha = 0.1;
+	params.bias_current = 0.9;
+	params.t_max = 1000;
+	params.h = 0.01;
+	params.signal_type = Signal::Type::RectImpulse;
+	params.stat_type = Signal::StatisticType::SuperPoisson;
+	params.stat_mean = 4;
+	params.single_pulse = true;
+
+
+	std::map<Signal::Type, std::string> Type2String = {
+		{Signal::Type::NoSignal, "NoSignal"},
+		{Signal::Type::SineContinuos, "SineContinuos"},
+		{Signal::Type::SineContinuos2, "SineContinuos2"},
+		{Signal::Type::HalfSineImpulse, "HalfSineImpulse"},
+		{Signal::Type::RectImpulse, "RectImpulse"},
+		{Signal::Type::TrapezImpulse, "TrapezImpulse"},
+	};
+
+	std::map<Signal::StatisticType, std::string> Stat2String = {
+		{Signal::StatisticType::Poisson, "Poisson"},
+		{Signal::StatisticType::SuperPoisson, "SuperPoisson"},
+		{Signal::StatisticType::SubPoisson, "SubPoisson"},
+	};
+
+	out_params << "amplitude: " << params.amplitude << std::endl;
+	out_params << "gamma: " << params.gamma << std::endl;
+	out_params << "alpha: " << params.alpha << std::endl;
+	out_params << "bias_current: " << params.bias_current << std::endl;
+	out_params << "time: " << params.t_max << std::endl;
+	out_params << "step: " << params.h << std::endl;
+	out_params << "signal: " << Type2String[params.signal_type] << std::endl;
+	out_params << "statistic: " << Stat2String[params.stat_type] << std::endl;
+	out_params << "statistic mean: " << params.stat_mean << std::endl;
+
+	out_mst << "omega" << "\t" << "mst" << std::endl;
+	out_sd << "omega" << "\t" << "sd" << std::endl;
+
+	size_t points = 0;
+	auto begin = std::chrono::high_resolution_clock::now();
+	//for (double Fq = 200000000; Fq < 2550000000; Fq += 21250000)
+	for (double omega = 0.01; omega < 1.2; omega += 0.01)
 	{
-		A = j;
-		//i0 = 0.95 - j;
-		std::cout << "A\t" << j << std::endl;
-		std::cout << "i0\t" << i0 << std::endl;
-		std::cout << "-------------------------------------------------" << std::endl;
+		//params.real.Fq = Fq;
+		//params.ConfigureFromReal();
+		params.omega = omega;
+		params.Configure();
+		auto res = CalculatePropability(params);
+		out_mst << params.omega << "\t" << res.first << std::endl;
+		out_sd << params.omega << "\t" << res.second << std::endl;
+		out_mst2sd << params.omega << "\t" << res.first / res.second << std::endl;
+		//out_mst << params.omega << "\t" << res.first / params.real.Wp << std::endl;
+		//out_sd << params.omega << "\t" << res.second / params.real.Wp << std::endl;
 
-		auto time_A1 = std::chrono::steady_clock::now();
-		for (double k = 0.01; k <= 0.01; k *= 10)
-		{
-			k = gamma; //
-			std::cout << "Gamma\t" << k << "\t\t";
-			auto time_gamma1 = std::chrono::steady_clock::now();
-			std::string f("C:\\Users\\A\\Desktop\\graphs9\\3tmp12_mst_A_" + std::to_string(A) + "_G_" + std::to_string(k) + ".txt");
-			std::string f2("C:\\Users\\A\\Desktop\\graphs9\\3tmp12_sd_A_" + std::to_string(A) + "_G_" + std::to_string(k) + ".txt");
-			std::string f3("C:\\Users\\A\\Desktop\\graphs9\\_life_time_A_" + std::to_string(A) + "_G_" + std::to_string(k) + ".txt");
-			std::ofstream out(f);
-			std::ofstream out2(f2);
-			std::ofstream out3(f3);
-			double perc = 0;
-			std::string perc_str;
-			for (double i = 0.0; i <= 1.2; i += 0.002)
-			{
-				auto time1 = std::chrono::steady_clock::now();
-				CalculatePropability(k, i, 1000, h, A, i0, mst, sd, lifetime);
-				out << "t = " << i << "\tx = " << *mst << std::endl;
-				out2 << "t = " << i << "\tx = " << *sd << std::endl;
-				out3 << i << "\t" << *lifetime << std::endl;
+		auto end = std::chrono::high_resolution_clock::now();
+		auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(end - begin);
+		std::cout << "\n"; // "\r"; //
+		std::cout << "omega: " << params.omega << "\ttime: " << elapsed.count() << " seconds";
 
-				sds.push_back(std::make_pair(*sd, i));
+		std::cout << "\nmst / sd: " << res.first / res.second << std::endl;
+		++points;
+	}
+	std::cout << std::endl;
 
-				auto time2 = std::chrono::steady_clock::now();
-				perc = i / 1.2 * 100;
-				perc_str = std::to_string((int)perc) + "%";
+	std::cout << "points " << points << std::endl;
 
-				for (int it_clear = perc_str.size(); it_clear > 0; it_clear -= 1)
-					std::cout << "\b";
-
-				std::cout << perc_str;
-			}
-			out.close();
-			out2.close();
-			out3.close();
-			auto time_gamma2 = std::chrono::steady_clock::now();
-			std::cout << "\tTime: " << (double)std::chrono::duration_cast<std::chrono::milliseconds>(time_gamma2 - time_gamma1).count() << " msec." << std::endl;
-
-			return;
-		}
-
-		auto time_A2 = std::chrono::steady_clock::now();
-		std::cout << "-------------------------------------------------" << std::endl;
-		std::cout << "Totatl time\t" << (double)std::chrono::duration_cast<std::chrono::milliseconds>(time_A2 - time_A1).count() << " msec." << std::endl;
-		std::cout << "-------------------------------------------------" << std::endl;
+	for (auto x : poisson_statistic) {
+		out_ps << x.first << '\t' << x.second / points << std::endl;
+		//out_ps_mean << x.first << '\t' << x.second / poisson_statistic.size() << '\n';
 	}
 
-	delete mst;
-	delete sd;
-}
-
-using namespace std;
-void histogram(std::vector<double> mass)
-{
-	int n = mass.size();
-	int max, min;
-	double width = 0;
-
-	double ccount = mass.size() / 100;
-
-	min = max = mass[0];
-	for (int i = 0; i < n; i++)
-	{
-		if (mass[i] >= max)
-		{
-			max = mass[i];
-		}
-		if (mass[i] <= min)
-		{
-			min = mass[i];
-		}
-	}
-
-	vector <int> gist(ccount);
-	width = (max - min) / ccount;
-	//cout << width;
-	for (int i = 0; i < ccount; i++)
-	{
-		for (int j = 0; j < n; j++)
-		{
-			if ((mass[j] >= min + i * width) && (mass[j] <= min + (i + 1) * width))
-				gist[i]++;
-		}
-	}
+	//std::map<int, int> ps;
+	//std::map<int, int> ps_mean;
 
 
-	std::ofstream out("C:\\Users\\A\\Desktop\\graphs3\\___n5.txt");
-	for (int i = 0; i < ccount; i++)
-	{
-		out << "t = " << min + i * width << "\tx = " << gist[i] << std::endl;
-		//cout << min + i * width << "| ";
-		//for (int j = 0; j < gist[i]; j++)
-		//{
-		//    //cout << "* ";
-		//}
-		//cout << endl;
-	}
-	out.close();
+	//for (auto omega : poisson_stat) {
+	//	for (auto photons_num : omega.second) {
+	//		ps[photons_num.first] += photons_num.second;
+	//	}
+	//}
+
+	//for (auto x : ps) {
+	//	out_ps << x.first << '\t' << x.second << '\n';
+	//	out_ps_mean << x.first << '\t' << x.second / poisson_stat.size() << '\n';
+	//}
 }

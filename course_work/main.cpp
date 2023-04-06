@@ -3,7 +3,6 @@
 
 int main()
 {
-	CountMST();
-	std::cout << "////////////////////" << std::endl;
+	MakeCurveByOmega();
 	return 0;
 }

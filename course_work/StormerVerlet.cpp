@@ -1,117 +1,59 @@
 #include "common.h"
 #include "StormerVerlet.h"
 
-double GetStormerVerlet(float* gas, std::vector<float>& P, StormerVerletParams& params, int id)
-{
-	double lifetime = 0.0;
-	bool end_lifetime = false;
-	float fi_current = asin(params.i0);
+double StormerVerlet(Parameters params) {
+	//std::string id = std::to_string(std::time(0));
+	//std::string file = "C:\\Users\\A\\source\\SDE\\graphs\\signal_" + id + "_" + std::to_string(params.signal.size()) + ".txt";
+	//std::ofstream out(file);
+
+	std::random_device rd{};
+	std::mt19937 gen{ rd() };
+	std::normal_distribution<> normal{ 0.0, 1.0 };
+
+	double result = params.t_max;
+	float fi_current = asin(params.bias_current);
 	float sin_fi = 0;
 	float fi_next = 0;
 	float v_current = 0;
 	float v_next = 0;
 	float noise = 0;
+	double t = 0;
+	float it = 0;
+	float signal = 0;
 
-#ifdef DUMP_POINTS
-	std::string f("C:\\Users\\A\\Desktop\\graphs6\\___57_" + std::to_string(id) + "_" + ".txt");
-	std::ofstream out(f);
-	float t = 0;
-#endif
-
-	for (size_t i = 0; i < params.size; ++i)
-	{
-		if (fi_current <= params.h_barrier && fi_current >= params.l_barrier)
+	auto barrier = [&] {
+		if (!(fi_current <= params.h_barrier && fi_current >= params.l_barrier))
 		{
-			P[i] += 1;
-			if (!end_lifetime) lifetime += params.h;
+			result = t;
+			return true;
 		}
-		else
-		{
-			end_lifetime = true;
-#ifdef LIFE_TIME_BREAK
-			break;
-#endif
-		}
+		return false;
+	};
 
-#ifdef DUMP_POINTS
-		out << "t = " << t << "\tx = " << fi_current << std::endl;
-#endif
+	auto step = [&] {
+		it = params.bias_current + signal;
 
-		noise = params.noise_intensity * gas[i];
+		noise = params.noise_intensity * normal(gen);
 		sin_fi = sin(fi_current);
 
-		fi_next = fi_current + params.c_bh * v_current - params.c_bh_squar * (sin_fi - params.it[i]) + params.c_bh_half * noise;
-		v_next = params.a * v_current - params.c_h_half * (params.a * sin_fi + sin(fi_next)) + params.it[i] * params.c_bh + params.b * noise;
+		fi_next = fi_current + params.c_bh * v_current - params.c_bh_squar * (sin_fi - it) + params.c_bh_half * noise;
+		v_next = params.a * v_current - params.c_h_half * (params.a * sin_fi + sin(fi_next)) + it * params.c_bh + params.b * noise;
 
 		fi_current = fi_next;
 		v_current = v_next;
 
-#ifdef DUMP_POINTS
 		t += params.h;
-#endif
+	};
+
+	for (size_t i = 0; i < params.size; i++) {
+		if (barrier()) break;
+
+		signal = params.Signal();
+		//out << t << "\t" << signal << std::endl;
+
+		step();
 	}
 
-#ifdef DUMP_POINTS
-	out.close();
-#endif
-
-	return lifetime;
+	return result;
 }
 
-StormerVerletParams::StormerVerletParams()
-{
-	A = 0.6;
-	omega = 0.5;
-	gamma = 0.007;
-	alpha = 0.1;
-	i0 = 0.5;
-	t = 0;
-	t_max = 20;
-	h = 0.01;
-	Cinfigure();
-};
-
-void StormerVerletParams::Cinfigure()
-{
-	h_barrier = PI + asin(A - i0);
-	h_barrier = PI; // temporary
-	l_barrier = -h_barrier;
-	CalculateCoefs();
-	CalculateItByTime();
-}
-
-void StormerVerletParams::CalculateCoefs()
-{
-	b = 1.0 / (1.0 + alpha * (h * 0.5));
-	a = b / (1.0 + alpha * (h * 0.5));
-
-	noise_intensity = sqrt(2.0 * alpha * gamma * h);
-	c_h_half = h * 0.5;
-	c_bh_half = b * c_h_half;
-	c_bh = h * b;
-	c_bh_squar = c_bh * c_h_half;
-	if (c_bh_half != (b * (h * 0.5f))) std::cout << c_bh_half << " " << b * (h * 0.5) << "Err\n" << std::endl;
-
-	size = t_max / h;
-	it.resize(size);
-};
-
-void StormerVerletParams::CalculateItByTime()
-{
-	float t = 0;
-	short first_step = 0;
-	for (size_t i = 0; i < size; ++i)
-	{
-		it[i] = i0 + A * sin(omega * t);
-
-		if (first_step)
-		{
-			t += h * 0.5;
-			first_step = 0;
-		}
-		else
-		{
-			t += h;
-		}
-	}
-}
